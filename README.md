@@ -1,213 +1,348 @@
-# 💸 Expense Splitter API
+# Expense Splitter API
 
-A **Splitwise-inspired REST API** built with FastAPI — track shared expenses between friends, calculate who owes whom, and settle up with the minimum number of transactions.
-
-Built as a learning project to explore FastAPI's core concepts: routing, dependency injection, JWT authentication, SQLAlchemy ORM, and non-trivial computed responses.
+A production-style RESTful API built with FastAPI and SQLAlchemy to track shared group expenses, compute user net balances, and generate minimal debt settlement schedules (similar to Splitwise).
 
 ---
 
-## ✨ Features
+## Overview
 
-- 🔐 **JWT Authentication** — register, log in, and access protected routes
-- 👥 **Groups** — create groups, invite friends, manage membership
-- 💳 **Expenses** — add expenses with automatic equal split or custom per-person amounts
-- 📊 **Smart Balances** — computed net balances (not just DB reads)
-- 🔁 **Debt Simplification** — greedy algorithm to minimize the number of payments needed
-- 📖 **Auto-generated docs** — Swagger UI at `/docs`, ReDoc at `/redoc`
+When groups of people share costs (trips, rent, dining, events), tracking who paid what and calculating who owes whom becomes complex. This project provides a complete backend solution with:
+
+- User authentication using JWT tokens and bcrypt password hashing.
+- Group management with role-based member control.
+- Flexible expense logging supporting equal distribution and custom itemized splits.
+- Real-time balance evaluation and a greedy debt simplification algorithm to settle debts in the minimum number of transactions.
+- Interactive documentation auto-generated via OpenAPI (Swagger UI and ReDoc).
 
 ---
 
-## 🗂️ Project Structure
+## Architecture and Technology Stack
 
-```
+- **Web Framework:** FastAPI (ASGI based on Starlette)
+- **Data Validation:** Pydantic v2
+- **ORM / Database Layer:** SQLAlchemy 2.0 with SQLite (configurable to PostgreSQL)
+- **Security:** JSON Web Tokens (python-jose), Password Hashing (bcrypt)
+- **ASGI Server:** Uvicorn
+
+---
+
+## Directory Structure
+
+```text
 expense_tracker_fast_api/
-├── app/
-│   ├── main.py           # App entry point — creates app, registers routers
-│   ├── database.py       # SQLAlchemy engine & session factory
-│   ├── models.py         # ORM models: User, Group, GroupMember, Expense, ExpenseSplit
-│   ├── schemas.py        # Pydantic schemas for request/response validation
-│   ├── auth.py           # JWT creation/verification + bcrypt password hashing
-│   ├── dependencies.py   # Reusable FastAPI dependencies (get_db, get_current_user)
-│   └── routers/
-│       ├── auth.py       # POST /auth/register  POST /auth/login  GET /auth/me
-│       ├── groups.py     # CRUD for groups + membership management
-│       ├── expenses.py   # CRUD for expenses with split logic
-│       └── balances.py   # GET /groups/{id}/balances  ← the interesting computed endpoint
-├── requirements.txt
-└── README.md
+|-- app/
+|   |-- __init__.py
+|   |-- main.py              # Application initialization, middleware, router setup
+|   |-- database.py          # Database engine and session factory
+|   |-- models.py            # SQLAlchemy database tables and relationships
+|   |-- schemas.py           # Pydantic request and response schemas
+|   |-- auth.py              # JWT encoding/decoding and bcrypt utilities
+|   |-- dependencies.py      # Dependency injection (get_db, get_current_user)
+|   `-- routers/
+|       |-- __init__.py
+|       |-- auth.py          # Authentication routes (register, login, me)
+|       |-- groups.py        # Group CRUD and membership management
+|       |-- expenses.py      # Expense creation and split recording
+|       `-- balances.py      # Balance calculation and debt simplification
+|-- requirements.txt         # Project dependencies
+|-- .gitignore               # Ignored files and directories
+`-- README.md                # Project documentation
 ```
 
 ---
 
-## 🚀 Getting Started
+## Database Models
 
-### 1. Clone and install dependencies
+The relational structure consists of five entities:
+
+1. **User (`users`)**
+   - `id`: Primary key integer.
+   - `email`: Unique string identifier for authentication.
+   - `full_name`: Display name.
+   - `hashed_password`: Salted bcrypt hash.
+   - `created_at`: Timestamp.
+
+2. **Group (`groups`)**
+   - `id`: Primary key integer.
+   - `name`: Name of the group.
+   - `description`: Group description or notes.
+   - `created_by`: Foreign key pointing to `users.id`.
+   - `created_at`: Timestamp.
+
+3. **GroupMember (`group_members`)**
+   - Association table enforcing a many-to-many relationship between `users` and `groups`.
+   - Constrained by a unique constraint on `(group_id, user_id)`.
+
+4. **Expense (`expenses`)**
+   - `id`: Primary key integer.
+   - `group_id`: Foreign key pointing to `groups.id`.
+   - `paid_by`: Foreign key pointing to `users.id` (the person who fronted payment).
+   - `title`: Short label describing the expense.
+   - `amount`: Total amount paid.
+   - `description`: Optional notes.
+   - `created_at`: Timestamp.
+
+5. **ExpenseSplit (`expense_splits`)**
+   - `id`: Primary key integer.
+   - `expense_id`: Foreign key pointing to `expenses.id`.
+   - `user_id`: Foreign key pointing to `users.id` (the participant who owes a portion).
+   - `share_amount`: Exact monetary value owed by the participant.
+
+---
+
+## Setup and Installation
+
+### Prerequisites
+
+- Python 3.10, 3.11, 3.12, 3.13, or 3.14
+- pip package manager
+- virtualenv (optional but recommended)
+
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/expense-splitter-api.git
 cd expense-splitter-api
+```
 
+### 2. Create and Activate a Virtual Environment
+
+On Windows (Command Prompt / PowerShell):
+```powershell
 python -m venv venv
-# Windows:
-venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
+.\venv\Scripts\activate
+```
 
+On Linux / macOS:
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-### 2. Run the server
+### 4. Run the Application
 
 ```bash
-uvicorn app.main:app --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-The API will be live at **http://localhost:8000**
-
-### 3. Explore the docs
-
-Open **http://localhost:8000/docs** in your browser to get the full interactive Swagger UI.
+The API will be available at `http://127.0.0.1:8000`.
 
 ---
 
-## 🔑 Authentication Flow
+## Interactive Documentation
 
-```
-POST /auth/register    →  create account
-POST /auth/login       →  get JWT token
-                          (use token as: Authorization: Bearer <token>)
-GET  /auth/me          →  verify token / get your profile
-```
+Once the server is running, visit:
+- **Swagger UI:** `http://127.0.0.1:8000/docs`
+- **ReDoc:** `http://127.0.0.1:8000/redoc`
 
-In Swagger UI, click the **🔒 Authorize** button and paste your token.
+Use the Swagger UI interface to test requests directly in your browser. Click the **Authorize** button at the top right to pass Bearer tokens to protected endpoints.
 
 ---
 
-## 📋 API Endpoints
+## API Specification
 
-### Auth
-| Method | Endpoint | Auth? | Description |
-|--------|----------|-------|-------------|
-| POST | `/auth/register` | ❌ | Create a new account |
-| POST | `/auth/login` | ❌ | Log in, receive JWT token |
-| GET | `/auth/me` | ✅ | Get current user profile |
+### Authentication
+
+#### Register a User
+- **POST** `/auth/register`
+- **Body:**
+```json
+{
+  "email": "alex@example.com",
+  "full_name": "Alex Mercer",
+  "password": "securepassword123"
+}
+```
+- **Response (201 Created):**
+```json
+{
+  "id": 1,
+  "email": "alex@example.com",
+  "full_name": "Alex Mercer",
+  "created_at": "2026-09-03T09:15:00"
+}
+```
+
+#### Log In
+- **POST** `/auth/login`
+- **Body:**
+```json
+{
+  "email": "alex@example.com",
+  "password": "securepassword123"
+}
+```
+- **Response (200 OK):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsIn...",
+  "token_type": "bearer"
+}
+```
+
+#### Get Current Profile
+- **GET** `/auth/me`
+- **Headers:** `Authorization: Bearer <token>`
+- **Response (200 OK):** Current user object.
+
+---
 
 ### Groups
-| Method | Endpoint | Auth? | Description |
-|--------|----------|-------|-------------|
-| POST | `/groups/` | ✅ | Create a group (you become creator + member) |
-| GET | `/groups/` | ✅ | List groups you're a member of |
-| GET | `/groups/{id}` | ✅ | Get group details |
-| PUT | `/groups/{id}` | ✅ | Update group (creator only) |
-| DELETE | `/groups/{id}` | ✅ | Delete group (creator only) |
-| GET | `/groups/{id}/members` | ✅ | List members |
-| POST | `/groups/{id}/members` | ✅ | Add a member |
-| DELETE | `/groups/{id}/members/{user_id}` | ✅ | Remove a member (creator only) |
+
+All group routes require authentication.
+
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/groups/` | Create a new group (creator is automatically added as a member) |
+| `GET` | `/groups/` | List all groups the authenticated user belongs to |
+| `GET` | `/groups/{group_id}` | Retrieve details of a specific group |
+| `PUT` | `/groups/{group_id}` | Update group details (creator only) |
+| `DELETE` | `/groups/{group_id}` | Delete group and all associated records (creator only) |
+| `GET` | `/groups/{group_id}/members` | List members of a group |
+| `POST` | `/groups/{group_id}/members` | Add a registered user to the group by user_id |
+| `DELETE` | `/groups/{group_id}/members/{user_id}` | Remove a member from the group (creator only) |
+
+---
 
 ### Expenses
-| Method | Endpoint | Auth? | Description |
-|--------|----------|-------|-------------|
-| POST | `/groups/{id}/expenses` | ✅ | Add an expense (equal or custom split) |
-| GET | `/groups/{id}/expenses` | ✅ | List expenses in a group |
-| GET | `/expenses/{id}` | ✅ | Get a single expense |
-| PUT | `/expenses/{id}` | ✅ | Update expense (expense owner only) |
-| DELETE | `/expenses/{id}` | ✅ | Delete expense |
 
-### Balances ⭐
-| Method | Endpoint | Auth? | Description |
-|--------|----------|-------|-------------|
-| GET | `/groups/{id}/balances` | ✅ | Net balances + simplified settlements |
+| Method | Route | Description |
+|---|---|---|
+| `POST` | `/groups/{group_id}/expenses` | Record an expense for the group |
+| `GET` | `/groups/{group_id}/expenses` | Retrieve all expenses for the group |
+| `GET` | `/expenses/{expense_id}` | Retrieve a single expense by ID |
+| `PUT` | `/expenses/{expense_id}` | Update expense title/amount (payer only) |
+| `DELETE` | `/expenses/{expense_id}` | Delete an expense (payer or group creator) |
 
----
+#### Expense Creation Modes
 
-## 🧮 How Balance Calculation Works
-
-For every expense in the group:
-
-```
-net[payer]        += expense.amount          # they fronted the money
-net[each_member]  -= their split share       # they owe their portion
+1. **Equal Split:** Omit the `splits` array (or send `[]`). The system divides `amount` evenly across all current members of the group.
+```json
+{
+  "title": "Dinner",
+  "amount": 90.00,
+  "description": "Team meal",
+  "splits": []
+}
 ```
 
-**Example:**
-- Alice pays £90 for dinner — split equally among Alice, Bob, Carol (£30 each)
-- Bob pays £60 for taxi — split equally (£20 each)
-
-| User | Paid | Owes | Net |
-|------|------|------|-----|
-| Alice | £90 | £30+£20 = £50 | **+£40** |
-| Bob | £60 | £30+£20 = £50 | **+£10** |
-| Carol | £0 | £30+£20 = £50 | **−£50** |
-
-**Simplified settlements** (greedy algorithm — minimal transactions):
-- Carol → Alice: £40
-- Carol → Bob: £10
-
----
-
-## 🏗️ Data Models
-
-```
-User ──────────────────────────────────────────────────────
-  id, email, full_name, hashed_password, created_at
-
-Group ─────────────────────────────────────────────────────
-  id, name, description, created_by (FK→User), created_at
-
-GroupMember  (User ↔ Group many-to-many) ─────────────────
-  id, group_id (FK→Group), user_id (FK→User), joined_at
-
-Expense ───────────────────────────────────────────────────
-  id, group_id (FK→Group), paid_by (FK→User),
-  title, amount, description, created_at
-
-ExpenseSplit ──────────────────────────────────────────────
-  id, expense_id (FK→Expense), user_id (FK→User), share_amount
+2. **Custom Split:** Specify each participant's share explicitly. The sum of `share_amount` values must equal the total `amount`.
+```json
+{
+  "title": "Grocery Run",
+  "amount": 100.00,
+  "description": "Shared pantry supplies",
+  "splits": [
+    {"user_id": 1, "share_amount": 60.00},
+    {"user_id": 2, "share_amount": 40.00}
+  ]
+}
 ```
 
 ---
 
-## 🗄️ Database
+### Balances and Settlements
 
-Uses **SQLite** by default — zero config, file-based (`expense_tracker.db` is auto-created).
+- **GET** `/groups/{group_id}/balances`
 
-To switch to **PostgreSQL**:
-1. `pip install psycopg2-binary`
-2. Change one line in `app/database.py`:
-   ```python
-   DATABASE_URL = "postgresql://user:password@localhost/dbname"
+Computes the net financial standing of every member in the group and produces a minimal list of debt settlement transactions.
+
+#### Example Response
+```json
+{
+  "group_id": 1,
+  "group_name": "Vacation Group",
+  "balances": [
+    {
+      "user_id": 1,
+      "full_name": "Alice",
+      "email": "alice@example.com",
+      "net_balance": 40.0
+    },
+    {
+      "user_id": 2,
+      "full_name": "Bob",
+      "email": "bob@example.com",
+      "net_balance": 10.0
+    },
+    {
+      "user_id": 3,
+      "full_name": "Carol",
+      "email": "carol@example.com",
+      "net_balance": -50.0
+    }
+  ],
+  "settlements": [
+    {
+      "from_user_id": 3,
+      "from_user_name": "Carol",
+      "to_user_id": 1,
+      "to_user_name": "Alice",
+      "amount": 40.0
+    },
+    {
+      "from_user_id": 3,
+      "from_user_name": "Carol",
+      "to_user_id": 2,
+      "to_user_name": "Bob",
+      "amount": 10.0
+    }
+  ]
+}
+```
+
+---
+
+## Balance and Settlement Algorithm
+
+### Net Balance Calculation
+For each user $u$ in group $G$:
+
+$$\text{Net Balance}(u) = \sum \text{Paid by } u - \sum \text{Owed by } u \text{ in splits}$$
+
+- If $\text{Net Balance}(u) > 0$, user $u$ is a **creditor** (is owed money).
+- If $\text{Net Balance}(u) < 0$, user $u$ is a **debtor** (owes money).
+- If $\text{Net Balance}(u) = 0$, user $u$ is settled.
+
+The sum of all net balances across any group always equals zero.
+
+### Greedy Debt Simplification
+To avoid unnecessary cross-payments, a greedy two-pointer algorithm resolves debts:
+
+1. Separate users into creditors ($C$) and debtors ($D$).
+2. Sort creditors descending by credit amount.
+3. Sort debtors descending by absolute debt amount.
+4. Set settlement amount $S = \min(\text{credit}_i, \text{debt}_j)$.
+5. Generate a settlement from debtor $j$ to creditor $i$ for amount $S$.
+6. Deduct $S$ from both balances. Advance pointer for whichever party reaches zero balance.
+7. Repeat until all balances are zero.
+
+This algorithm reduces the number of transactions to at most $N - 1$, where $N$ is the number of participants.
+
+---
+
+## Switching to PostgreSQL
+
+SQLite is enabled by default for zero-configuration setup. To switch to PostgreSQL in production:
+
+1. Install `psycopg2-binary`:
+   ```bash
+   pip install psycopg2-binary
    ```
-   And remove the `connect_args` from `create_engine()`.
+2. Update `DATABASE_URL` in `app/database.py`:
+   ```python
+   DATABASE_URL = "postgresql://username:password@localhost:5432/dbname"
+   ```
+3. Remove the `connect_args={"check_same_thread": False}` parameter from `create_engine`.
 
 ---
 
-## 🧠 Key FastAPI Concepts Used
+## License
 
-| Concept | Where to find it |
-|---------|-----------------|
-| **Dependency Injection** | `app/dependencies.py` — `get_db`, `get_current_user` |
-| **Pydantic Validation** | `app/schemas.py` — request/response models with validators |
-| **SQLAlchemy ORM** | `app/models.py` — relationships, cascade deletes |
-| **JWT Auth** | `app/auth.py` — token creation & decoding |
-| **Router organisation** | `app/routers/` — each domain has its own file |
-| **Computed responses** | `app/routers/balances.py` — logic beyond simple DB reads |
-| **HTTP status codes** | `status_code=201` for creates, `204` for deletes |
-
----
-
-## 📦 Tech Stack
-
-| | |
-|-|-|
-| **Framework** | [FastAPI](https://fastapi.tiangolo.com/) |
-| **ORM** | [SQLAlchemy 2.0](https://docs.sqlalchemy.org/) |
-| **Validation** | [Pydantic v2](https://docs.pydantic.dev/) |
-| **Auth** | [python-jose](https://github.com/mpdavis/python-jose) (JWT) + [passlib](https://passlib.readthedocs.io/) (bcrypt) |
-| **Database** | SQLite (dev) / PostgreSQL (prod-ready) |
-| **Server** | [Uvicorn](https://www.uvicorn.org/) |
-
----
-
-## 📝 License
-
-MIT — free to use, modify, and share.
+This project is open-source and available under the MIT License.
